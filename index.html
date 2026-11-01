@@ -170,7 +170,7 @@
 
             <!-- Bloco para Adicionar Endereços, Câmera e Voz -->
             <div class="card">
-                <div class="info-gps">📍 Câmera, Voz, Auto-preenchimento e Rota Automática!</div>
+                <div class="info-gps">📍 Câmera, Voz, Auto-preenchimento livre e Rota Automática!</div>
                 
                 <!-- Botões de Ação Rápida -->
                 <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
@@ -180,7 +180,8 @@
 
                 <label for="enderecoInput" style="margin-top: 4px; display: block;"><strong>Endereço da Entrega:</strong></label>
                 <div class="input-wrapper">
-                    <input type="text" id="enderecoInput" placeholder="Comece a digitar a rua..." oninput="buscarSugestoes(this.value)" onkeydown="if(event.key === 'Enter') { fecharAutocomplete(); adicionarParada(); }">
+                    <!-- ATUALIZADO: autocomplete="off" para o navegador não bloquear os números/endereço -->
+                    <input type="text" id="enderecoInput" autocomplete="off" placeholder="Ex: Rua Juventus, 832..." oninput="buscarSugestoes(this.value)" onkeydown="if(event.key === 'Enter') { fecharAutocomplete(); adicionarParada(); }">
                     <div id="autocomplete-list" class="autocomplete-items"></div>
                 </div>
 
@@ -248,7 +249,7 @@
             };
         };
 
-        // --- 2. AUTO-PREENCHIMENTO (SUGESTÕES VIA NOMINATIM) ---
+        // --- 2. AUTO-PREENCHIMENTO (LIBERADO PARA NÚMEROS) ---
         window.buscarSugestoes = function(val) {
             clearTimeout(timerAutocomplete);
             const listaDiv = document.getElementById('autocomplete-list');
@@ -266,7 +267,10 @@
                     dados.forEach(item => {
                         const divItem = document.createElement('div');
                         divItem.innerHTML = item.display_name;
-                        divItem.addEventListener('click', function() {
+                        
+                        // Usando mousedown para garantir que o clique na sugestão funcione sem apagar
+                        divItem.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
                             document.getElementById('enderecoInput').value = item.display_name;
                             listaDiv.innerHTML = '';
                         });
@@ -275,7 +279,7 @@
                 } catch (e) {
                     console.error("Erro no auto-preenchimento:", e);
                 }
-            }, 300); // Aguarda 300ms após parar de digitar
+            }, 300);
         };
 
         window.fecharAutocomplete = function() {
