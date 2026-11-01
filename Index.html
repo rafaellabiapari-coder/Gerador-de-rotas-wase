@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RotaWaze Pro - Otimizador de Entregas</title>
+    
+    <!-- Importando o Firebase (Versão 13 via Script/CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+        import { getDatabase, ref, get, set, remove } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
+
+        // --- SUAS CONFIGURAÇÕES DO FIREBASE JÁ INSERIDAS ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDukRfUcJd-p5K_1NOBFouZCA0zSe-tQZw",
+            authDomain: "minhas-rotas-25084.firebaseapp.com",
+            databaseURL: "https://minhas-rotas-25084-default-rtdb.firebaseio.com", // Adicionado o link padrão do Realtime Database
+            projectId: "minhas-rotas-25084",
+            storageBucket: "minhas-rotas-25084.firebasestorage.app",
+            messagingSenderId: "599014840635",
+            appId: "1:599014840635:web:68dfbc87233d9b3f1a7f1e"
+        };
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Lista de chaves válidas que você pode vender para os clientes
+        const CHAVES_VALIDAS = ["ROTA123", "CLIENTEIPHONE", "VIP2026"];
+
+        // Gerar um ID único para este celular/navegador atual
+        let meuDeviceId = localStorage.getItem('rota_device_id');
+        if (!meuDeviceId) {
+            meuDeviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+            localStorage.setItem('rota_device_id', meuDeviceId);
+        }
+
+        // Verificar ao carregar o app se já está logado
+        window.onload = function() {
+            const licencaSalva = localStorage.getItem('rota_licenca_ativa');
+            if (licencaSalva) {
+                verificarSessaoAtivaNoBanco(licencaSalva, true);
+            }
+        };
+
+        // Função de Login
+        window.validarLicenca = async function() {
+            const digitada = document.getElementById('chaveInput').value.trim();
+            
+            if (!CHAVES_VALIDAS.includes(digitada)) {
+                alert('Chave de acesso inválida ou expirada!');
+                return;
+            }
+
+            const chaveRef = ref(db, 'sessoes/' + digitada);
+            const snapshot = await get(chaveRef);
+
+            // Verifica se a chave já está sendo usada em outro aparelho
+            if (snapshot.exists()) {
+                const dadosSessao = snapshot.val();
+                if (dadosSessao.deviceId !== meuDeviceId) {
+                    alert("⚠️ Esta chave já está em uso ativo em outro aparelho! Cada licença permite apenas um acesso simultâneo.");
+                    return;
+                }
+            }
+
+            // Registra o aparelho atual no banco
+            await set(chaveRef, {
+                deviceId: meuDeviceId,
+                timestamp: Date.now()
+            });
+
+            localStorage.setItem('rota_licenca_ativa', digitada);
+            mostrarApp();
+        };
+
+        async function verificarSessaoAtivaNoBanco(chave, automatico = false) {
+            try {
+                const chaveRef = ref(db, 'sessoes/' + chave);
+                const snapshot = await get(chaveRef);
+
+                if (snapshot.exists()) {
+                    const dadosSessao = snapshot.val();
+                    if (dadosSessao.deviceId === meuDeviceId) {
+                        mostrarApp();
+                    } else {
+                        if (!automatico) alert("Sessão encerrada por uso em outro aparelho.");
+                        sair(false);
+                    }
+                } else if (!automatico) {
+                    sair(false);
+                }
+            } catch (e) {
+                // Caso fique offline, permite abrir o app se a chave já estava salva
+                mostrarApp();
+            }
+        }
+
+        window.sair = async function(removerDoBanco = true) {
+            const licencaSalva = localStorage.getItem('rota_licenca_ativa');
+            if (removerDoBanco && licencaSalva) {
+                const chaveRef = ref(db, 'sessoes/' + licencaSalva);
+                await remove(chaveRef).catch(() => {});
+            }
+            localStorage.removeItem('rota_licenca_ativa');
+            location.reload();
+        };
+
+        function mostrarApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+            renderizarLista();
+        }
+    </script>
+
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --waze: #33ccff;
+            --bg: #f4f6f9;
+            --card-bg: #fff;
+            --text: #333;
+            --danger: #ff4d4d;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 16px;
+            color: var(--text);
+        }
+        .container { max-width: 480px; margin: 0 auto; }
+        h1 { font-size: 1.4rem; text-align: center; color: var(--primary); margin-bottom: 4px; }
+        p.subtitle { text-align: center; font-size: 0.85rem; color: #666; margin-top: 0; margin-bottom: 20px; }
+        .card { background: var(--card-bg); padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 16px; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; }
+        .btn { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-waze { background-color: var(--waze); color: #000; display: block; text-align: center; font-weight: bold; padding: 10px; border-radius: 6px; text-decoration: none; }
+        .hidden { display: none !important; }
+        .parada-item { background: #fff; padding: 12px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .header-lista { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .badge-licenca { background: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- TELA DE LOGIN -->
+        <div id="loginScreen" class="card">
+            <h1>🔒 RotaWaze Pro</h1>
+            <p class="subtitle">Insira sua licença de acesso</p>
+            <label for="chaveInput"><strong>Chave de Acesso:</strong></label>
+            <input type="password" id="chaveInput" placeholder="Ex: ROTA123">
+            <button class="btn btn-primary" onclick="window.validarLicenca()">Entrar no Sistema</button>
+        </div>
+
+        <!-- APLICAÇÃO PRINCIPAL -->
+        <div id="appScreen" class="hidden">
+            <h1>🚗 RotaWaze Pro</h1>
+            <div style="text-align: center;">
+                <span class="badge-licenca">Licença Ativa ✅</span>
+                <a href="#" onclick="window.sair(true)" style="font-size: 0.75rem; color: #d93025; display: block; margin-bottom: 10px;">Sair / Encerrar Sessão</a>
+            </div>
+
+            <!-- Bloco para Adicionar Endereços -->
+            <div class="card">
+                <label for="enderecoInput"><strong>Adicionar nova parada:</strong></label>
+                <input type="text" id="enderecoInput" placeholder="Ex: Rua das Flores, 123, São Paulo">
+                <button class="btn btn-primary" onclick="adicionarParada()">Adicionar à Rota</button>
+            </div>
+
+            <!-- Lista de Rotas e Waze -->
+            <div>
+                <div class="header-lista">
+                    <h3 id="contadorTitulo" style="margin: 0; font-size: 1.1rem;">Paradas (0)</h3>
+                    <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
+                </div>
+                <div id="listaParadas"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // LÓGICA DE ROTAS E NAVEGAÇÃO
+        let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
+
+        function salvarEAtualizar() {
+            localStorage.setItem('enderecos_entrega', JSON.stringify(enderecos));
+            renderizarLista();
+        }
+
+        function adicionarParada() {
+            const input = document.getElementById('enderecoInput');
+            const valor = input.value.trim();
+            if (valor) {
+                enderecos.push(valor);
+                input.value = '';
+                salvarEAtualizar();
+            } else {
+                alert('Digite um endereço válido.');
+            }
+        }
+
+        function removerParada(index) {
+            enderecos.splice(index, 1);
+            salvarEAtualizar();
+        }
+
+        function limparLista() {
+            if (confirm('Deseja apagar todas as paradas?')) {
+                enderecos = [];
+                salvarEAtualizar();
+            }
+        }
+
+        function renderizarLista() {
+            const container = document.getElementById('listaParadas');
+            const contador = document.getElementById('contadorTitulo');
+            container.innerHTML = '';
+            contador.innerText = `Paradas (${enderecos.length})`;
+
+            if (enderecos.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #888; font-size: 0.9rem;">Nenhuma parada cadastrada.</p>';
+                return;
+            }
+
+            enderecos.forEach((end, index) => {
+                const encodedEnd = encodeURIComponent(end);
+                // Link universal oficial para abrir o Waze direto na rota daquela parada
+                const wazeUrl = `https://waze.com/ul?q=${encodedEnd}&navigate=yes`;
+
+                const div = document.createElement('div');
+                div.className = 'parada-item';
+                div.innerHTML = `
+                    <div style="font-size: 0.95rem; font-weight: 500;">
+                        <strong>Parada ${index + 1}:</strong> ${end}
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <a href="${wazeUrl}" class="btn-waze" style="flex: 2;">Abrir no Waze 🚗</a>
+                        <button class="btn btn-danger" style="flex: 1; margin-top: 0; padding: 10px;" onclick="removerParada(${index})">Excluir</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>
