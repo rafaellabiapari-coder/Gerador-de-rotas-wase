@@ -10,32 +10,28 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
         import { getDatabase, ref, get, set, remove } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
 
-        // --- SUAS CONFIGURAÇÕES DO FIREBASE JÁ INSERIDAS ---
+        // --- SUAS CONFIGURAÇÕES DO FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDukRfUcJd-p5K_1NOBFouZCA0zSe-tQZw",
             authDomain: "minhas-rotas-25084.firebaseapp.com",
-            databaseURL: "https://minhas-rotas-25084-default-rtdb.firebaseio.com", // Adicionado o link padrão do Realtime Database
+            databaseURL: "https://minhas-rotas-25084-default-rtdb.firebaseio.com",
             projectId: "minhas-rotas-25084",
             storageBucket: "minhas-rotas-25084.firebasestorage.app",
             messagingSenderId: "599014840635",
             appId: "1:599014840635:web:68dfbc87233d9b3f1a7f1e"
         };
 
-        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Lista de chaves válidas que você pode vender para os clientes
         const CHAVES_VALIDAS = ["ROTA123", "CLIENTEIPHONE", "VIP2026"];
 
-        // Gerar um ID único para este celular/navegador atual
         let meuDeviceId = localStorage.getItem('rota_device_id');
         if (!meuDeviceId) {
             meuDeviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
             localStorage.setItem('rota_device_id', meuDeviceId);
         }
 
-        // Verificar ao carregar o app se já está logado
         window.onload = function() {
             const licencaSalva = localStorage.getItem('rota_licenca_ativa');
             if (licencaSalva) {
@@ -43,7 +39,6 @@
             }
         };
 
-        // Função de Login
         window.validarLicenca = async function() {
             const digitada = document.getElementById('chaveInput').value.trim();
             
@@ -55,7 +50,6 @@
             const chaveRef = ref(db, 'sessoes/' + digitada);
             const snapshot = await get(chaveRef);
 
-            // Verifica se a chave já está sendo usada em outro aparelho
             if (snapshot.exists()) {
                 const dadosSessao = snapshot.val();
                 if (dadosSessao.deviceId !== meuDeviceId) {
@@ -64,7 +58,6 @@
                 }
             }
 
-            // Registra o aparelho atual no banco
             await set(chaveRef, {
                 deviceId: meuDeviceId,
                 timestamp: Date.now()
@@ -91,7 +84,6 @@
                     sair(false);
                 }
             } catch (e) {
-                // Caso fique offline, permite abrir o app se a chave já estava salva
                 mostrarApp();
             }
         }
@@ -121,6 +113,7 @@
             --card-bg: #fff;
             --text: #333;
             --danger: #ff4d4d;
+            --success: #28a745;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -136,12 +129,14 @@
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; }
         .btn { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
         .btn-primary { background-color: var(--primary); color: white; }
+        .btn-success { background-color: var(--success); color: white; margin-top: 8px; }
         .btn-danger { background-color: var(--danger); color: white; }
         .btn-waze { background-color: var(--waze); color: #000; display: block; text-align: center; font-weight: bold; padding: 10px; border-radius: 6px; text-decoration: none; }
         .hidden { display: none !important; }
         .parada-item { background: #fff; padding: 12px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
         .header-lista { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .badge-licenca { background: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 10px; }
+        .info-gps { background: #e8f0fe; color: #174ea6; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 10px; text-align: center; }
     </style>
 </head>
 <body>
@@ -166,8 +161,9 @@
 
             <!-- Bloco para Adicionar Endereços -->
             <div class="card">
+                <div class="info-gps">📍 O app usa o seu GPS atual para calcular a parada mais perto de você!</div>
                 <label for="enderecoInput"><strong>Adicionar nova parada:</strong></label>
-                <input type="text" id="enderecoInput" placeholder="Ex: Rua das Flores, 123, São Paulo">
+                <input type="text" id="enderecoInput" placeholder="Ex: Rua Salgueiro, 130, São Paulo">
                 <button class="btn btn-primary" onclick="adicionarParada()">Adicionar à Rota</button>
             </div>
 
@@ -177,13 +173,16 @@
                     <h3 id="contadorTitulo" style="margin: 0; font-size: 1.1rem;">Paradas (0)</h3>
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
-                <div id="listaParadas"></div>
+                
+                <!-- Botão de Otimização Automática (Liberado a partir de 2 endereços) -->
+                <button id="btnOtimizar" class="btn btn-success hidden" onclick="otimizarRotasComGPS()">⚡ Otimizar Rota a partir da Minha Localização</button>
+                
+                <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
         </div>
     </div>
 
     <script>
-        // LÓGICA DE ROTAS E NAVEGAÇÃO
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
 
         function salvarEAtualizar() {
@@ -215,11 +214,135 @@
             }
         }
 
+        // Função para converter endereço em coordenadas usando OpenStreetMap (Nominatim)
+        async function gearEndereco(endereco) {
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco)}&limit=1`;
+                const resposta = await fetch(url);
+                const dados = await resposta.json();
+                if (dados && dados.length > 0) {
+                    return { lat: parseFloat(dados[0].lat), lon: parseFloat(dados[0].lon) };
+                }
+            } catch (e) {
+                console.error("Erro ao buscar coordenadas:", e);
+            }
+            return null;
+        }
+
+        // Obter localização atual do GPS do celular
+        function obterLocalizacaoAtual() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject("GPS não suportado pelo navegador.");
+                } else {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            resolve({
+                                lat: position.coords.latitude,
+                                lon: position.coords.longitude
+                            });
+                        },
+                        (error) => {
+                            reject("Não foi possível obter sua localização GPS. Verifique se permitiu o acesso à localização.");
+                        },
+                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    );
+                }
+            });
+        }
+
+        // Calcular distância em linha reta entre dois pontos (Fórmula de Haversine)
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            function toRad(x) { return x * Math.PI / 180; }
+            const R = 6371; // Raio da Terra em km
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Algoritmo de otimização baseado na localização real do GPS do celular
+        window.otimizarRotasComGPS = async function() {
+            if (enderecos.length < 2) {
+                alert("Adicione pelo menos 2 endereços para otimizar.");
+                return;
+            }
+
+            const btn = document.getElementById('btnOtimizar');
+            btn.innerText = "Obtendo seu GPS e calculando...";
+            btn.disabled = true;
+
+            try {
+                const minhaPosicao = await obterLocalizacaoAtual();
+
+                let pontos = [];
+                for (let i = 0; i < enderecos.length; i++) {
+                    const coords = await gearEndereco(enderecos[i]);
+                    pontos.push({
+                        endereco: enderecos[i],
+                        lat: coords ? coords.lat : null,
+                        lon: coords ? coords.lon : null
+                    });
+                }
+
+                let validos = pontos.filter(p => p.lat !== null);
+                let invalidos = pontos.filter(p => p.lat === null).map(p => p.endereco);
+
+                if (validos.length === 0) {
+                    alert("Não foi possível localizar os endereços digitados.");
+                    btn.innerText = "⚡ Otimizar Rota a partir da Minha Localização";
+                    btn.disabled = false;
+                    return;
+                }
+
+                let rotaOtimizada = [];
+                let pontoAtual = minhaPosicao;
+
+                while (validos.length > 0) {
+                    let maisProximoIndex = 0;
+                    let menorDistancia = Infinity;
+
+                    for (let i = 0; i < validos.length; i++) {
+                        const dist = calcularDistancia(pontoAtual.lat, pontoAtual.lon, validos[i].lat, validos[i].lon);
+                        if (dist < menorDistancia) {
+                            menorDistancia = dist;
+                            maisProximoIndex = i;
+                        }
+                    }
+
+                    let escolhido = validos.splice(maisProximoIndex, 1)[0];
+                    rotaOtimizada.push(escolhido.endereco);
+                    pontoAtual = { lat: escolhido.lat, lon: escolhido.lon };
+                }
+
+                enderecos = [...rotaOtimizada, ...invalidos];
+                salvarEAtualizar();
+
+                alert("✨ Rota reorganizada com base na sua localização atual na rua!");
+            } catch (erro) {
+                alert(erro);
+            } finally {
+                btn.innerText = "⚡ Otimizar Rota a partir da Minha Localização";
+                btn.disabled = false;
+            }
+        };
+
         function renderizarLista() {
             const container = document.getElementById('listaParadas');
             const contador = document.getElementById('contadorTitulo');
+            const btnOtimizar = document.getElementById('btnOtimizar');
             container.innerHTML = '';
             contador.innerText = `Paradas (${enderecos.length})`;
+
+            // ATUALIZADO: Agora ativa o botão a partir de 2 endereços
+            if (enderecos.length >= 2) {
+                btnOtimizar.classList.remove('hidden');
+            } else {
+                btnOtimizar.classList.add('hidden');
+            }
 
             if (enderecos.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #888; font-size: 0.9rem;">Nenhuma parada cadastrada.</p>';
@@ -228,7 +351,6 @@
 
             enderecos.forEach((end, index) => {
                 const encodedEnd = encodeURIComponent(end);
-                // Link universal oficial para abrir o Waze direto na rota daquela parada
                 const wazeUrl = `https://waze.com/ul?q=${encodedEnd}&navigate=yes`;
 
                 const div = document.createElement('div');
