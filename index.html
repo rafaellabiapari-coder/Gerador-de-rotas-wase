@@ -105,6 +105,9 @@
         }
     </script>
 
+    <!-- Importando Tesseract.js para OCR (Leitura de texto por foto) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
     <style>
         :root {
             --primary: #1a73e8;
@@ -114,6 +117,7 @@
             --text: #333;
             --danger: #ff4d4d;
             --success: #28a745;
+            --camera: #673ab7;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -129,6 +133,7 @@
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; }
         .btn { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
         .btn-primary { background-color: var(--primary); color: white; }
+        .btn-camera { background-color: var(--camera); color: white; margin-bottom: 10px; }
         .btn-danger { background-color: var(--danger); color: white; }
         .btn-waze { background-color: var(--waze); color: #000; display: block; text-align: center; font-weight: bold; padding: 10px; border-radius: 6px; text-decoration: none; }
         .hidden { display: none !important; }
@@ -159,10 +164,15 @@
                 <a href="#" onclick="window.sair(true)" style="font-size: 0.75rem; color: #d93025; display: block; margin-bottom: 10px;">Sair / Encerrar Sessão</a>
             </div>
 
-            <!-- Bloco para Adicionar Endereços -->
+            <!-- Bloco para Adicionar Endereços e Ler Foto -->
             <div class="card">
-                <div class="info-gps">📍 O app usa o seu GPS atual para ordenar automaticamente as novas paradas!</div>
-                <label for="enderecoInput"><strong>Adicionar nova parada:</strong></label>
+                <div class="info-gps">📍 O app otimiza automaticamente por proximidade!</div>
+                
+                <!-- Botão da Câmera / Comanda -->
+                <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
+                <input type="file" id="inputFotoComanda" accept="image/*" capture="environment" class="hidden" onchange="processarFotoComanda(event)">
+
+                <label for="enderecoInput" style="margin-top: 8px; display: block;"><strong>Ou digite o endereço:</strong></label>
                 <input type="text" id="enderecoInput" placeholder="Ex: Rua Salgueiro, 130, São Paulo" onkeydown="if(event.key === 'Enter') adicionarParada()">
                 <button class="btn btn-primary" onclick="adicionarParada()">Adicionar e Otimizar Rota</button>
             </div>
@@ -174,7 +184,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Otimizando rota por proximidade...</div>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Lendo comanda e otimizando rota...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -188,6 +198,44 @@
             localStorage.setItem('enderecos_entrega', JSON.stringify(enderecos));
             renderizarLista();
         }
+
+        // Função para ler a comanda por OCR (Tesseract)
+        window.processarFotoComanda = async function(event) {
+            const arquivo = event.target.files[0];
+            if (!arquivo) return;
+
+            const statusDiv = document.getElementById('statusOtimizacao');
+            statusDiv.innerText = "📸 Lendo texto da comanda...";
+            statusDiv.classList.remove('hidden');
+
+            try {
+                // Executa OCR na imagem capturada
+                const resultado = await Tesseract.recognize(
+                    arquivo,
+                    'por',
+                    { logger: m => console.log(m) }
+                );
+
+                const textoExtraido = resultado.data.text;
+                console.log("Texto da comanda:", textoExtraido);
+
+                // Tenta limpar e extrair uma linha que pareça um endereço (procurando palavras-chave ou números de rua)
+                const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+                let melhorSugestao = linhas.length > 0 ? linhas[0] : textoExtraido.trim();
+
+                // Coloca o texto lido no input de endereço para o entregador conferir/adicionar
+                document.getElementById('enderecoInput').value = melhorSugestao;
+                statusDiv.classList.add('hidden');
+                
+                alert("✨ Endereço lido da comanda! Verifique se está correto e clique em 'Adicionar e Otimizar Rota'.");
+            } catch (erro) {
+                console.error("Erro no OCR:", erro);
+                alert("Não foi possível ler o texto da comanda. Tente tirar a foto com mais claridade ou digite manualmente.");
+                statusDiv.classList.add('hidden');
+            } finally {
+                event.target.value = ''; // Limpa o input file para permitir novas fotos
+            }
+        };
 
         // Função para converter endereço em coordenadas usando OpenStreetMap (Nominatim)
         async function gearEndereco(endereco) {
@@ -244,27 +292,24 @@
             const input = document.getElementById('enderecoInput');
             const valor = input.value.trim();
             if (!valor) {
-                alert('Digite um endereço válido.');
+                alert('Digite ou escaneie um endereço válido.');
                 return;
             }
 
-            // Adiciona o endereço temporariamente na lista
             enderecos.push(valor);
             input.value = '';
             salvarEAtualizar();
 
-            // Se tiver 2 ou mais endereços, roda a otimização automática em segundo plano
             if (enderecos.length >= 2) {
                 const statusDiv = document.getElementById('statusOtimizacao');
+                statusDiv.innerText = "🔄 Otimizando rota por proximidade...";
                 statusDiv.classList.remove('hidden');
 
                 try {
-                    // Tenta pegar o GPS atual
                     let pontoAtual;
                     try {
                         pontoAtual = await obterLocalizacaoAtual();
                     } catch (e) {
-                        // Se falhar o GPS, usa a primeira parada como ponto de referência
                         const coordsPrimeira = await gearEndereco(enderecos[0]);
                         pontoAtual = coordsPrimeira ? { lat: coordsPrimeira.lat, lon: coordsPrimeira.lon } : null;
                     }
