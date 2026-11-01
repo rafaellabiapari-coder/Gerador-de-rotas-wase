@@ -10,7 +10,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
         import { getDatabase, ref, get, set, remove } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
 
-        // --- SUAS CONFIGURAÇÕES DO FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDukRfUcJd-p5K_1NOBFouZCA0zSe-tQZw",
             authDomain: "minhas-rotas-25084.firebaseapp.com",
@@ -41,7 +40,6 @@
 
         window.validarLicenca = async function() {
             const digitada = document.getElementById('chaveInput').value.trim();
-            
             if (!CHAVES_VALIDAS.includes(digitada)) {
                 alert('Chave de acesso inválida ou expirada!');
                 return;
@@ -53,7 +51,7 @@
             if (snapshot.exists()) {
                 const dadosSessao = snapshot.val();
                 if (dadosSessao.deviceId !== meuDeviceId) {
-                    alert("⚠️ Esta chave já está em uso ativo em outro aparelho! Cada licença permite apenas um acesso simultâneo.");
+                    alert("⚠️ Esta chave já está em uso ativo em outro aparelho!");
                     return;
                 }
             }
@@ -105,7 +103,7 @@
         }
     </script>
 
-    <!-- Importando Tesseract.js para OCR -->
+    <!-- Importando Tesseract.js para OCR Otimizado -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
@@ -118,6 +116,7 @@
             --danger: #ff4d4d;
             --success: #28a745;
             --camera: #673ab7;
+            --voice: #e91e63;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -133,7 +132,8 @@
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; }
         .btn { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
         .btn-primary { background-color: var(--primary); color: white; }
-        .btn-camera { background-color: var(--camera); color: white; margin-bottom: 10px; }
+        .btn-camera { background-color: var(--camera); color: white; margin-bottom: 8px; }
+        .btn-voice { background-color: var(--voice); color: white; margin-bottom: 10px; }
         .btn-danger { background-color: var(--danger); color: white; }
         .btn-waze { background-color: var(--waze); color: #000; display: block; text-align: center; font-weight: bold; padding: 10px; border-radius: 6px; text-decoration: none; }
         .hidden { display: none !important; }
@@ -142,6 +142,10 @@
         .badge-licenca { background: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 10px; }
         .info-gps { background: #e8f0fe; color: #174ea6; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 10px; text-align: center; }
         .status-otimizacao { font-size: 0.85rem; color: #28a745; text-align: center; margin-bottom: 8px; font-weight: bold; }
+        .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; border-radius: 0 0 8px 8px; max-height: 150px; overflow-y: auto; background-color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .autocomplete-items div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #d4d4d4; font-size: 0.9rem; }
+        .autocomplete-items div:hover { background-color: #e9e9e9; }
+        .input-wrapper { position: relative; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -164,16 +168,22 @@
                 <a href="#" onclick="window.sair(true)" style="font-size: 0.75rem; color: #d93025; display: block; margin-bottom: 10px;">Sair / Encerrar Sessão</a>
             </div>
 
-            <!-- Bloco para Adicionar Endereços e Ler Foto -->
+            <!-- Bloco para Adicionar Endereços, Câmera e Voz -->
             <div class="card">
-                <div class="info-gps">📍 O app lê abaixo de "ENDERECO" e otimiza a rota por proximidade!</div>
+                <div class="info-gps">📍 Câmera, Voz, Auto-preenchimento e Rota Automática!</div>
                 
-                <!-- Botão da Câmera / Comanda -->
+                <!-- Botões de Ação Rápida -->
                 <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
                 <input type="file" id="inputFotoComanda" accept="image/*" capture="environment" class="hidden" onchange="processarFotoComanda(event)">
 
-                <label for="enderecoInput" style="margin-top: 8px; display: block;"><strong>Endereço extraído / Digitar:</strong></label>
-                <input type="text" id="enderecoInput" placeholder="Ex: Rua Juventus, 832, São Paulo" onkeydown="if(event.key === 'Enter') adicionarParada()">
+                <button class="btn btn-voice" onclick="iniciarReconhecimentoVoz()">🎤 Falar Endereço por Voz</button>
+
+                <label for="enderecoInput" style="margin-top: 4px; display: block;"><strong>Endereço da Entrega:</strong></label>
+                <div class="input-wrapper">
+                    <input type="text" id="enderecoInput" placeholder="Comece a digitar a rua..." oninput="buscarSugestoes(this.value)" onkeydown="if(event.key === 'Enter') { fecharAutocomplete(); adicionarParada(); }">
+                    <div id="autocomplete-list" class="autocomplete-items"></div>
+                </div>
+
                 <button class="btn btn-primary" onclick="adicionarParada()">Adicionar e Otimizar Rota</button>
             </div>
 
@@ -184,7 +194,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Lendo comanda abaixo de ENDERECO...</div>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Processando...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -193,35 +203,103 @@
 
     <script>
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
+        let timerAutocomplete = null;
 
         function salvarEAtualizar() {
             localStorage.setItem('enderecos_entrega', JSON.stringify(enderecos));
             renderizarLista();
         }
 
-        // Função para ler a comanda buscando especificamente logo abaixo da palavra ENDERECO
+        // --- 1. RECONHECIMENTO DE VOZ ---
+        window.iniciarReconhecimentoVoz = function() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("O seu navegador não suporta reconhecimento de voz. Tente usar o Google Chrome no celular.");
+                return;
+            }
+
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'pt-BR';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            const statusDiv = document.getElementById('statusOtimizacao');
+            statusDiv.innerText = "🎤 Ouvindo endereço... Pode falar!";
+            statusDiv.classList.remove('hidden');
+
+            recognition.start();
+
+            recognition.onresult = function(event) {
+                const textoFalado = event.results[0][0].transcript;
+                document.getElementById('enderecoInput').value = textoFalado;
+                statusDiv.classList.add('hidden');
+                alert(`✨ Entendido: "${textoFalado}". Clique em Adicionar e Otimizar.`);
+            };
+
+            recognition.onerror = function(event) {
+                console.error("Erro na voz:", event.error);
+                statusDiv.classList.add('hidden');
+                alert("Não foi possível capturar a voz. Tente novamente.");
+            };
+
+            recognition.onspeechend = function() {
+                recognition.stop();
+                statusDiv.classList.add('hidden');
+            };
+        };
+
+        // --- 2. AUTO-PREENCHIMENTO (SUGESTÕES VIA NOMINATIM) ---
+        window.buscarSugestoes = function(val) {
+            clearTimeout(timerAutocomplete);
+            const listaDiv = document.getElementById('autocomplete-list');
+            listaDiv.innerHTML = '';
+
+            if (!val || val.length < 3) return;
+
+            timerAutocomplete = setTimeout(async () => {
+                try {
+                    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5`;
+                    const resposta = await fetch(url);
+                    const dados = await resposta.json();
+
+                    listaDiv.innerHTML = '';
+                    dados.forEach(item => {
+                        const divItem = document.createElement('div');
+                        divItem.innerHTML = item.display_name;
+                        divItem.addEventListener('click', function() {
+                            document.getElementById('enderecoInput').value = item.display_name;
+                            listaDiv.innerHTML = '';
+                        });
+                        listaDiv.appendChild(divItem);
+                    });
+                } catch (e) {
+                    console.error("Erro no auto-preenchimento:", e);
+                }
+            }, 300); // Aguarda 300ms após parar de digitar
+        };
+
+        window.fecharAutocomplete = function() {
+            setTimeout(() => {
+                document.getElementById('autocomplete-list').innerHTML = '';
+            }, 200);
+        };
+
+        // --- 3. LEITURA RÁPIDA DE COMANDA (OCR) ---
         window.processarFotoComanda = async function(event) {
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "📸 Analisando comanda e buscando ENDEREÇO...";
+            statusDiv.innerText = "⚡ Lendo comanda rapidamente...";
             statusDiv.classList.remove('hidden');
 
             try {
-                const resultado = await Tesseract.recognize(
-                    arquivo,
-                    'por',
-                    { logger: m => console.log(m) }
-                );
-
+                const resultado = await Tesseract.recognize(arquivo, 'por');
                 const textoExtraido = resultado.data.text;
-                console.log("Texto completo lido:", textoExtraido);
 
                 const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 0);
                 let enderecoEncontrado = "";
 
-                // Procura a linha que contém "ENDERECO" ou "ENDEREÇO" e pega as linhas seguintes
                 for (let i = 0; i < linhas.length; i++) {
                     const linhaAtual = linhas[i].toUpperCase();
                     if (linhaAtual.includes("ENDERECO") || linhaAtual.includes("ENDEREÇO")) {
@@ -234,7 +312,7 @@
                 }
 
                 if (!enderecoEncontrado) {
-                    const validas = linhas.filter(l => l.length > 6 && !l.toUpperCase().includes("CLIENTE") && !l.toUpperCase().includes("IFOOD"));
+                    const validas = linhas.filter(l => l.length > 6 && !l.toUpperCase().includes("CLIENTE"));
                     enderecoEncontrado = validas.length > 0 ? validas[0] : "";
                 }
 
@@ -242,13 +320,13 @@
                 statusDiv.classList.add('hidden');
 
                 if (enderecoEncontrado) {
-                    alert("✨ Endereço extraído com sucesso da comanda! Confira e clique em 'Adicionar e Otimizar Rota'.");
+                    alert("✨ Endereço capturado! Clique em 'Adicionar e Otimizar Rota'.");
                 } else {
-                    alert("Não foi possível localizar o endereço automaticamente. Digite-o manualmente.");
+                    alert("Não foi possível capturar automaticamente. Digite o endereço.");
                 }
             } catch (erro) {
                 console.error("Erro no OCR:", erro);
-                alert("Erro ao ler a comanda por foto.");
+                alert("Erro ao ler a foto.");
                 statusDiv.classList.add('hidden');
             } finally {
                 event.target.value = '';
@@ -272,7 +350,7 @@
         function obterLocalizacaoAtual() {
             return new Promise((resolve, reject) => {
                 if (!navigator.geolocation) {
-                    reject("GPS não suportado pelo navegador.");
+                    reject("GPS não suportado.");
                 } else {
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
@@ -282,9 +360,9 @@
                             });
                         },
                         (error) => {
-                            reject("Não foi possível obter sua localização GPS.");
+                            reject("Erro no GPS.");
                         },
-                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
                     );
                 }
             });
@@ -310,6 +388,7 @@
                 return;
             }
 
+            document.getElementById('autocomplete-list').innerHTML = '';
             enderecos.push(valor);
             input.value = '';
             salvarEAtualizar();
