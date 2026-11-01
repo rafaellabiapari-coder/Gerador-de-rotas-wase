@@ -105,7 +105,7 @@
         }
     </script>
 
-    <!-- Importando Tesseract.js para OCR (Leitura de texto por foto) -->
+    <!-- Importando Tesseract.js para OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
@@ -166,14 +166,14 @@
 
             <!-- Bloco para Adicionar Endereços e Ler Foto -->
             <div class="card">
-                <div class="info-gps">📍 O app otimiza automaticamente por proximidade!</div>
+                <div class="info-gps">📍 O app lê abaixo de "ENDERECO" e otimiza a rota por proximidade!</div>
                 
                 <!-- Botão da Câmera / Comanda -->
                 <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
                 <input type="file" id="inputFotoComanda" accept="image/*" capture="environment" class="hidden" onchange="processarFotoComanda(event)">
 
-                <label for="enderecoInput" style="margin-top: 8px; display: block;"><strong>Ou digite o endereço:</strong></label>
-                <input type="text" id="enderecoInput" placeholder="Ex: Rua Salgueiro, 130, São Paulo" onkeydown="if(event.key === 'Enter') adicionarParada()">
+                <label for="enderecoInput" style="margin-top: 8px; display: block;"><strong>Endereço extraído / Digitar:</strong></label>
+                <input type="text" id="enderecoInput" placeholder="Ex: Rua Juventus, 832, São Paulo" onkeydown="if(event.key === 'Enter') adicionarParada()">
                 <button class="btn btn-primary" onclick="adicionarParada()">Adicionar e Otimizar Rota</button>
             </div>
 
@@ -184,7 +184,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Lendo comanda e otimizando rota...</div>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Lendo comanda abaixo de ENDERECO...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -199,17 +199,16 @@
             renderizarLista();
         }
 
-        // Função para ler a comanda por OCR (Tesseract)
+        // Função para ler a comanda buscando especificamente logo abaixo da palavra ENDERECO
         window.processarFotoComanda = async function(event) {
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "📸 Lendo texto da comanda...";
+            statusDiv.innerText = "📸 Analisando comanda e buscando ENDEREÇO...";
             statusDiv.classList.remove('hidden');
 
             try {
-                // Executa OCR na imagem capturada
                 const resultado = await Tesseract.recognize(
                     arquivo,
                     'por',
@@ -217,27 +216,45 @@
                 );
 
                 const textoExtraido = resultado.data.text;
-                console.log("Texto da comanda:", textoExtraido);
+                console.log("Texto completo lido:", textoExtraido);
 
-                // Tenta limpar e extrair uma linha que pareça um endereço (procurando palavras-chave ou números de rua)
-                const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-                let melhorSugestao = linhas.length > 0 ? linhas[0] : textoExtraido.trim();
+                const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                let enderecoEncontrado = "";
 
-                // Coloca o texto lido no input de endereço para o entregador conferir/adicionar
-                document.getElementById('enderecoInput').value = melhorSugestao;
+                // Procura a linha que contém "ENDERECO" ou "ENDEREÇO" e pega as linhas seguintes
+                for (let i = 0; i < linhas.length; i++) {
+                    const linhaAtual = linhas[i].toUpperCase();
+                    if (linhaAtual.includes("ENDERECO") || linhaAtual.includes("ENDEREÇO")) {
+                        let partes = [];
+                        if (i + 1 < linhas.length) partes.push(linhas[i + 1]);
+                        if (i + 2 < linhas.length) partes.push(linhas[i + 2]);
+                        enderecoEncontrado = partes.join(", ");
+                        break;
+                    }
+                }
+
+                if (!enderecoEncontrado) {
+                    const validas = linhas.filter(l => l.length > 6 && !l.toUpperCase().includes("CLIENTE") && !l.toUpperCase().includes("IFOOD"));
+                    enderecoEncontrado = validas.length > 0 ? validas[0] : "";
+                }
+
+                document.getElementById('enderecoInput').value = enderecoEncontrado;
                 statusDiv.classList.add('hidden');
-                
-                alert("✨ Endereço lido da comanda! Verifique se está correto e clique em 'Adicionar e Otimizar Rota'.");
+
+                if (enderecoEncontrado) {
+                    alert("✨ Endereço extraído com sucesso da comanda! Confira e clique em 'Adicionar e Otimizar Rota'.");
+                } else {
+                    alert("Não foi possível localizar o endereço automaticamente. Digite-o manualmente.");
+                }
             } catch (erro) {
                 console.error("Erro no OCR:", erro);
-                alert("Não foi possível ler o texto da comanda. Tente tirar a foto com mais claridade ou digite manualmente.");
+                alert("Erro ao ler a comanda por foto.");
                 statusDiv.classList.add('hidden');
             } finally {
-                event.target.value = ''; // Limpa o input file para permitir novas fotos
+                event.target.value = '';
             }
         };
 
-        // Função para converter endereço em coordenadas usando OpenStreetMap (Nominatim)
         async function gearEndereco(endereco) {
             try {
                 const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco)}&limit=1`;
@@ -252,7 +269,6 @@
             return null;
         }
 
-        // Obter localização atual do GPS do celular
         function obterLocalizacaoAtual() {
             return new Promise((resolve, reject) => {
                 if (!navigator.geolocation) {
@@ -274,10 +290,9 @@
             });
         }
 
-        // Calcular distância em linha reta entre dois pontos (Fórmula de Haversine)
         function calcularDistancia(lat1, lon1, lat2, lon2) {
             function toRad(x) { return x * Math.PI / 180; }
-            const R = 6371; // Raio da Terra em km
+            const R = 6371;
             const dLat = toRad(lat2 - lat1);
             const dLon = toRad(lon2 - lon1);
             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -287,7 +302,6 @@
             return R * c;
         }
 
-        // Adiciona e já otimiza a rota automaticamente de forma inteligente
         window.adicionarParada = async function() {
             const input = document.getElementById('enderecoInput');
             const valor = input.value.trim();
