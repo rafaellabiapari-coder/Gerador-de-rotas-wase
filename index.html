@@ -129,7 +129,6 @@
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; margin-bottom: 10px; }
         .btn { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; text-decoration: none; display: inline-block; }
         .btn-primary { background-color: var(--primary); color: white; }
-        .btn-success { background-color: var(--success); color: white; margin-top: 8px; }
         .btn-danger { background-color: var(--danger); color: white; }
         .btn-waze { background-color: var(--waze); color: #000; display: block; text-align: center; font-weight: bold; padding: 10px; border-radius: 6px; text-decoration: none; }
         .hidden { display: none !important; }
@@ -137,6 +136,7 @@
         .header-lista { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .badge-licenca { background: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 10px; }
         .info-gps { background: #e8f0fe; color: #174ea6; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 10px; text-align: center; }
+        .status-otimizacao { font-size: 0.85rem; color: #28a745; text-align: center; margin-bottom: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -161,10 +161,10 @@
 
             <!-- Bloco para Adicionar Endereços -->
             <div class="card">
-                <div class="info-gps">📍 O app usa o seu GPS atual para calcular a parada mais perto de você!</div>
+                <div class="info-gps">📍 O app usa o seu GPS atual para ordenar automaticamente as novas paradas!</div>
                 <label for="enderecoInput"><strong>Adicionar nova parada:</strong></label>
-                <input type="text" id="enderecoInput" placeholder="Ex: Rua Salgueiro, 130, São Paulo">
-                <button class="btn btn-primary" onclick="adicionarParada()">Adicionar à Rota</button>
+                <input type="text" id="enderecoInput" placeholder="Ex: Rua Salgueiro, 130, São Paulo" onkeydown="if(event.key === 'Enter') adicionarParada()">
+                <button class="btn btn-primary" onclick="adicionarParada()">Adicionar e Otimizar Rota</button>
             </div>
 
             <!-- Lista de Rotas e Waze -->
@@ -174,8 +174,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <!-- Botão de Otimização Automática (Liberado a partir de 2 endereços) -->
-                <button id="btnOtimizar" class="btn btn-success hidden" onclick="otimizarRotasComGPS()">⚡ Otimizar Rota a partir da Minha Localização</button>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Otimizando rota por proximidade...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -188,30 +187,6 @@
         function salvarEAtualizar() {
             localStorage.setItem('enderecos_entrega', JSON.stringify(enderecos));
             renderizarLista();
-        }
-
-        function adicionarParada() {
-            const input = document.getElementById('enderecoInput');
-            const valor = input.value.trim();
-            if (valor) {
-                enderecos.push(valor);
-                input.value = '';
-                salvarEAtualizar();
-            } else {
-                alert('Digite um endereço válido.');
-            }
-        }
-
-        function removerParada(index) {
-            enderecos.splice(index, 1);
-            salvarEAtualizar();
-        }
-
-        function limparLista() {
-            if (confirm('Deseja apagar todas as paradas?')) {
-                enderecos = [];
-                salvarEAtualizar();
-            }
         }
 
         // Função para converter endereço em coordenadas usando OpenStreetMap (Nominatim)
@@ -243,7 +218,7 @@
                             });
                         },
                         (error) => {
-                            reject("Não foi possível obter sua localização GPS. Verifique se permitiu o acesso à localização.");
+                            reject("Não foi possível obter sua localização GPS.");
                         },
                         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                     );
@@ -264,85 +239,98 @@
             return R * c;
         }
 
-        // Algoritmo de otimização baseado na localização real do GPS do celular
-        window.otimizarRotasComGPS = async function() {
-            if (enderecos.length < 2) {
-                alert("Adicione pelo menos 2 endereços para otimizar.");
+        // Adiciona e já otimiza a rota automaticamente de forma inteligente
+        window.adicionarParada = async function() {
+            const input = document.getElementById('enderecoInput');
+            const valor = input.value.trim();
+            if (!valor) {
+                alert('Digite um endereço válido.');
                 return;
             }
 
-            const btn = document.getElementById('btnOtimizar');
-            btn.innerText = "Obtendo seu GPS e calculando...";
-            btn.disabled = true;
+            // Adiciona o endereço temporariamente na lista
+            enderecos.push(valor);
+            input.value = '';
+            salvarEAtualizar();
 
-            try {
-                const minhaPosicao = await obterLocalizacaoAtual();
+            // Se tiver 2 ou mais endereços, roda a otimização automática em segundo plano
+            if (enderecos.length >= 2) {
+                const statusDiv = document.getElementById('statusOtimizacao');
+                statusDiv.classList.remove('hidden');
 
-                let pontos = [];
-                for (let i = 0; i < enderecos.length; i++) {
-                    const coords = await gearEndereco(enderecos[i]);
-                    pontos.push({
-                        endereco: enderecos[i],
-                        lat: coords ? coords.lat : null,
-                        lon: coords ? coords.lon : null
-                    });
-                }
-
-                let validos = pontos.filter(p => p.lat !== null);
-                let invalidos = pontos.filter(p => p.lat === null).map(p => p.endereco);
-
-                if (validos.length === 0) {
-                    alert("Não foi possível localizar os endereços digitados.");
-                    btn.innerText = "⚡ Otimizar Rota a partir da Minha Localização";
-                    btn.disabled = false;
-                    return;
-                }
-
-                let rotaOtimizada = [];
-                let pontoAtual = minhaPosicao;
-
-                while (validos.length > 0) {
-                    let maisProximoIndex = 0;
-                    let menorDistancia = Infinity;
-
-                    for (let i = 0; i < validos.length; i++) {
-                        const dist = calcularDistancia(pontoAtual.lat, pontoAtual.lon, validos[i].lat, validos[i].lon);
-                        if (dist < menorDistancia) {
-                            menorDistancia = dist;
-                            maisProximoIndex = i;
-                        }
+                try {
+                    // Tenta pegar o GPS atual
+                    let pontoAtual;
+                    try {
+                        pontoAtual = await obterLocalizacaoAtual();
+                    } catch (e) {
+                        // Se falhar o GPS, usa a primeira parada como ponto de referência
+                        const coordsPrimeira = await gearEndereco(enderecos[0]);
+                        pontoAtual = coordsPrimeira ? { lat: coordsPrimeira.lat, lon: coordsPrimeira.lon } : null;
                     }
 
-                    let escolhido = validos.splice(maisProximoIndex, 1)[0];
-                    rotaOtimizada.push(escolhido.endereco);
-                    pontoAtual = { lat: escolhido.lat, lon: escolhido.lon };
+                    let pontos = [];
+                    for (let i = 0; i < enderecos.length; i++) {
+                        const coords = await gearEndereco(enderecos[i]);
+                        pontos.push({
+                            endereco: enderecos[i],
+                            lat: coords ? coords.lat : null,
+                            lon: coords ? coords.lon : null
+                        });
+                    }
+
+                    let validos = pontos.filter(p => p.lat !== null);
+                    let invalidos = pontos.filter(p => p.lat === null).map(p => p.endereco);
+
+                    if (validos.length >= 2 && pontoAtual) {
+                        let rotaOtimizada = [];
+                        let atual = pontoAtual;
+
+                        while (validos.length > 0) {
+                            let maisProximoIndex = 0;
+                            let menorDistancia = Infinity;
+
+                            for (let i = 0; i < validos.length; i++) {
+                                const dist = calcularDistancia(atual.lat, atual.lon, validos[i].lat, validos[i].lon);
+                                if (dist < menorDistancia) {
+                                    menorDistancia = dist;
+                                    maisProximoIndex = i;
+                                }
+                            }
+
+                            let escolhido = validos.splice(maisProximoIndex, 1)[0];
+                            rotaOtimizada.push(escolhido.endereco);
+                            atual = { lat: escolhido.lat, lon: escolhido.lon };
+                        }
+
+                        enderecos = [...rotaOtimizada, ...invalidos];
+                        salvarEAtualizar();
+                    }
+                } catch (err) {
+                    console.error("Erro na otimização automática:", err);
+                } finally {
+                    statusDiv.classList.add('hidden');
                 }
-
-                enderecos = [...rotaOtimizada, ...invalidos];
-                salvarEAtualizar();
-
-                alert("✨ Rota reorganizada com base na sua localização atual na rua!");
-            } catch (erro) {
-                alert(erro);
-            } finally {
-                btn.innerText = "⚡ Otimizar Rota a partir da Minha Localização";
-                btn.disabled = false;
             }
-        };
+        }
+
+        window.removerParada = function(index) {
+            enderecos.splice(index, 1);
+            salvarEAtualizar();
+        }
+
+        window.limparLista = function() {
+            if (confirm('Deseja apagar todas as paradas?')) {
+                enderecos = [];
+                salvarEAtualizar();
+            }
+        }
 
         function renderizarLista() {
             const container = document.getElementById('listaParadas');
             const contador = document.getElementById('contadorTitulo');
-            const btnOtimizar = document.getElementById('btnOtimizar');
             container.innerHTML = '';
             contador.innerText = `Paradas (${enderecos.length})`;
-
-            // ATUALIZADO: Agora ativa o botão a partir de 2 endereços
-            if (enderecos.length >= 2) {
-                btnOtimizar.classList.remove('hidden');
-            } else {
-                btnOtimizar.classList.add('hidden');
-            }
 
             if (enderecos.length === 0) {
                 container.innerHTML = '<p style="text-align: center; color: #888; font-size: 0.9rem;">Nenhuma parada cadastrada.</p>';
