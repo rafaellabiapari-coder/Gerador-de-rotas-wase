@@ -142,10 +142,25 @@
         .badge-licenca { background: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 10px; }
         .info-gps { background: #e8f0fe; color: #174ea6; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 10px; text-align: center; }
         .status-otimizacao { font-size: 0.85rem; color: #28a745; text-align: center; margin-bottom: 8px; font-weight: bold; }
-        .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; border-radius: 0 0 8px 8px; max-height: 150px; overflow-y: auto; background-color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .autocomplete-items div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #d4d4d4; font-size: 0.9rem; }
+        
+        .autocomplete-items { 
+            border: 1px solid #d4d4d4; 
+            border-radius: 8px; 
+            z-index: 99; 
+            max-height: 140px; 
+            overflow-y: auto; 
+            background-color: #fff; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            margin-bottom: 10px;
+        }
+        .autocomplete-items div { 
+            padding: 10px; 
+            cursor: pointer; 
+            background-color: #fff; 
+            border-bottom: 1px solid #eee; 
+            font-size: 0.9rem; 
+        }
         .autocomplete-items div:hover { background-color: #e9e9e9; }
-        .input-wrapper { position: relative; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -170,7 +185,7 @@
 
             <!-- Bloco para Adicionar Endereços, Câmera e Voz -->
             <div class="card">
-                <div class="info-gps">📍 Câmera, Voz, Auto-preenchimento livre e Rota Automática!</div>
+                <div class="info-gps">📍 Câmera com filtro inteligente de comanda, Voz e Rota Automática!</div>
                 
                 <!-- Botões de Ação Rápida -->
                 <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
@@ -178,12 +193,10 @@
 
                 <button class="btn btn-voice" onclick="iniciarReconhecimentoVoz()">🎤 Falar Endereço por Voz</button>
 
-                <label for="enderecoInput" style="margin-top: 4px; display: block;"><strong>Endereço da Entrega:</strong></label>
-                <div class="input-wrapper">
-                    <!-- ATUALIZADO: autocomplete="off" para o navegador não bloquear os números/endereço -->
-                    <input type="text" id="enderecoInput" autocomplete="off" placeholder="Ex: Rua Juventus, 832..." oninput="buscarSugestoes(this.value)" onkeydown="if(event.key === 'Enter') { fecharAutocomplete(); adicionarParada(); }">
-                    <div id="autocomplete-list" class="autocomplete-items"></div>
-                </div>
+                <label for="enderecoInput" style="margin-top: 4px; display: block;"><strong>Endereço da Entrega (Rua e Número):</strong></label>
+                <input type="text" id="enderecoInput" autocomplete="off" placeholder="Ex: Rua Juventus, 832..." oninput="buscarSugestoes(this.value)" onkeydown="if(event.key === 'Enter') { fecharAutocomplete(); adicionarParada(); }">
+                
+                <div id="autocomplete-list" class="autocomplete-items"></div>
 
                 <button class="btn btn-primary" onclick="adicionarParada()">Adicionar e Otimizar Rota</button>
             </div>
@@ -195,7 +208,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Processando...</div>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Processando comanda...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -249,7 +262,7 @@
             };
         };
 
-        // --- 2. AUTO-PREENCHIMENTO (LIBERADO PARA NÚMEROS) ---
+        // --- 2. AUTO-PREENCHIMENTO INTELIGENTE ---
         window.buscarSugestoes = function(val) {
             clearTimeout(timerAutocomplete);
             const listaDiv = document.getElementById('autocomplete-list');
@@ -268,13 +281,12 @@
                         const divItem = document.createElement('div');
                         divItem.innerHTML = item.display_name;
                         
-                        // Usando mousedown para garantir que o clique na sugestão funcione sem apagar
                         divItem.addEventListener('mousedown', function(e) {
                             e.preventDefault();
                             document.getElementById('enderecoInput').value = item.display_name;
                             listaDiv.innerHTML = '';
                         });
-                        listaDiv.appendChild(divItem);
+                        divItem.appendChild(divItem);
                     });
                 } catch (e) {
                     console.error("Erro no auto-preenchimento:", e);
@@ -288,49 +300,76 @@
             }, 200);
         };
 
-        // --- 3. LEITURA RÁPIDA DE COMANDA (OCR) ---
+        // --- 3. LEITURA INTELIGENTE DE COMANDA (FOCADA NO BLOCO DE ENDEREÇO) ---
         window.processarFotoComanda = async function(event) {
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "⚡ Lendo comanda rapidamente...";
+            statusDiv.innerText = "⚡ Analisando comanda e isolando o endereço...";
             statusDiv.classList.remove('hidden');
 
             try {
                 const resultado = await Tesseract.recognize(arquivo, 'por');
                 const textoExtraido = resultado.data.text;
+                console.log("Texto OCR bruto:", textoExtraido);
 
                 const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                let enderecoEncontrado = "";
+                let enderecoExtraido = "";
 
+                // Procura especificamente pelo termo "ENDERECO" ou "ENDEREÇO"
                 for (let i = 0; i < linhas.length; i++) {
-                    const linhaAtual = linhas[i].toUpperCase();
-                    if (linhaAtual.includes("ENDERECO") || linhaAtual.includes("ENDEREÇO")) {
-                        let partes = [];
-                        if (i + 1 < linhas.length) partes.push(linhas[i + 1]);
-                        if (i + 2 < linhas.length) partes.push(linhas[i + 2]);
-                        enderecoEncontrado = partes.join(", ");
-                        break;
+                    const lUp = linhas[i].toUpperCase();
+                    if (lUp.includes("ENDERECO") || lUp.includes("ENDEREÇO") || lUp.includes("END.")) {
+                        // Captura as próximas linhas úteis ignorando traços isolados ou palavras curtas vazias
+                        let pedacos = [];
+                        for (let j = 1; j <= 3; j++) {
+                            if (i + j < linhas.length) {
+                                let proximaLinha = linhas[i + j];
+                                // Se a linha seguinte for o começo de outra seção (ex: "Qtde", "Telefone", etc), para.
+                                if (proximaLinha.toUpperCase().includes("QTDE") || 
+                                    proximaLinha.toUpperCase().includes("TELEFONE") || 
+                                    proximaLinha.toUpperCase().includes("CLIENTE") ||
+                                    proximaLinha === "-") {
+                                    break;
+                                }
+                                if (proximaLinha.length > 2) {
+                                    pedacos.push(proximaLinha);
+                                }
+                            }
+                        }
+                        if (pedacos.length > 0) {
+                            enderecoExtraido = pedacos.join(", ");
+                            break;
+                        }
                     }
                 }
 
-                if (!enderecoEncontrado) {
-                    const validas = linhas.filter(l => l.length > 6 && !l.toUpperCase().includes("CLIENTE"));
-                    enderecoEncontrado = validas.length > 0 ? validas[0] : "";
+                // Se não achou pela palavra ENDERECO, busca linhas que contenham termos típicos de rua
+                if (!enderecoExtraido) {
+                    for (let linha of linhas) {
+                        let lUp = linha.toUpperCase();
+                        if (lUp.includes("RUA ") || lUp.includes("AV ") || lUp.includes("AVENIDA ") || lUp.includes("ALAMEDA ")) {
+                            enderecoExtraido = linha;
+                            break;
+                        }
+                    }
                 }
 
-                document.getElementById('enderecoInput').value = enderecoEncontrado;
+                // Limpa possíveis caracteres indesejados nas pontas
+                enderecoExtraido = enderecoExtraido.replace(/^[-–—,\s]+/, "").trim();
+
+                document.getElementById('enderecoInput').value = enderecoExtraido;
                 statusDiv.classList.add('hidden');
 
-                if (enderecoEncontrado) {
-                    alert("✨ Endereço capturado! Clique em 'Adicionar e Otimizar Rota'.");
+                if (enderecoExtraido) {
+                    alert(`✨ Endereço isolado: "${enderecoExtraido}". Confira se está correto e clique em Adicionar.`);
                 } else {
-                    alert("Não foi possível capturar automaticamente. Digite o endereço.");
+                    alert("Não foi possível isolar o endereço com precisão. Por favor, digite ou use o microfone.");
                 }
             } catch (erro) {
                 console.error("Erro no OCR:", erro);
-                alert("Erro ao ler a foto.");
+                alert("Erro ao ler a foto da comanda.");
                 statusDiv.classList.add('hidden');
             } finally {
                 event.target.value = '';
