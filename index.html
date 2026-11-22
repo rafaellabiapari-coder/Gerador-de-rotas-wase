@@ -103,9 +103,6 @@
         }
     </script>
 
-    <!-- Importando Tesseract.js para OCR Otimizado -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
     <style>
         :root {
             --primary: #1a73e8;
@@ -183,13 +180,12 @@
                 <a href="#" onclick="window.sair(true)" style="font-size: 0.75rem; color: #d93025; display: block; margin-bottom: 10px;">Sair / Encerrar Sessão</a>
             </div>
 
-            <!-- Bloco para Adicionar Endereços, Câmera e Voz -->
+            <!-- Bloco para Adicionar Endereços, Câmera (IA Gemini) e Voz -->
             <div class="card">
-                <div class="info-gps">📍 Câmera com filtro inteligente de comanda, Voz e Rota Automática!</div>
+                <div class="info-gps">✨ Leitura de Comanda com IA Gemini, Voz e Rota Automática!</div>
                 
-                <!-- Botões de Ação Rápida -->
-                <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto</button>
-                <input type="file" id="inputFotoComanda" accept="image/*" capture="environment" class="hidden" onchange="processarFotoComanda(event)">
+                <button class="btn btn-camera" onclick="document.getElementById('inputFotoComanda').click()">📸 Ler Comanda por Foto (IA)</button>
+                <input type="file" id="inputFotoComanda" accept="image/*" capture="environment" class="hidden" onchange="processarFotoComandaGemini(event)">
 
                 <button class="btn btn-voice" onclick="iniciarReconhecimentoVoz()">🎤 Falar Endereço por Voz</button>
 
@@ -208,7 +204,7 @@
                     <button class="btn btn-danger" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="limparLista()">Limpar Tudo</button>
                 </div>
                 
-                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Processando comanda...</div>
+                <div id="statusOtimizacao" class="status-otimizacao hidden">🔄 Analisando comanda com IA...</div>
                 
                 <div id="listaParadas" style="margin-top: 12px;"></div>
             </div>
@@ -216,6 +212,8 @@
     </div>
 
     <script>
+        const GEMINI_API_KEY = "AQ.Ab8RN6JaXAhC5idSuq8AWk1G9kx-GXLzgS8_6bNskJpdBPVYfQ";
+
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
         let timerAutocomplete = null;
 
@@ -247,11 +245,9 @@
                 const textoFalado = event.results[0][0].transcript;
                 document.getElementById('enderecoInput').value = textoFalado;
                 statusDiv.classList.add('hidden');
-                alert(`✨ Entendido: "${textoFalado}". Clique em Adicionar e Otimizar.`);
             };
 
-            recognition.onerror = function(event) {
-                console.error("Erro na voz:", event.error);
+            recognition.onerror = function() {
                 statusDiv.classList.add('hidden');
                 alert("Não foi possível capturar a voz. Tente novamente.");
             };
@@ -286,7 +282,7 @@
                             document.getElementById('enderecoInput').value = item.display_name;
                             listaDiv.innerHTML = '';
                         });
-                        divItem.appendChild(divItem);
+                        listaDiv.appendChild(divItem);
                     });
                 } catch (e) {
                     console.error("Erro no auto-preenchimento:", e);
@@ -300,78 +296,108 @@
             }, 200);
         };
 
-        // --- 3. LEITURA INTELIGENTE DE COMANDA (FOCADA NO BLOCO DE ENDEREÇO) ---
-        window.processarFotoComanda = async function(event) {
+        // --- 3. REDIMENSIONA E CONVERTE IMAGEM PARA BASE64 ---
+        function prepararImagemBase64(arquivo) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const maxDim = 1024;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxDim || height > maxDim) {
+                            if (width > height) {
+                                height = Math.round((height * maxDim) / width);
+                                width = maxDim;
+                            } else {
+                                width = Math.round((width * maxDim) / height);
+                                height = maxDim;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                        resolve(dataUrl.split(',')[1]);
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(arquivo);
+            });
+        }
+
+        // --- 4. LEITURA DE COMANDA COM GEMINI API ---
+        window.processarFotoComandaGemini = async function(event) {
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === "COLE_SUA_CHAVE_GEMINI_AQUI") {
+                alert("⚠️ Configure sua chave da Gemini API na variável GEMINI_API_KEY do código!");
+                event.target.value = '';
+                return;
+            }
+
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "⚡ Analisando comanda e isolando o endereço...";
+            statusDiv.innerText = "✨ IA Gemini lendo o endereço da comanda...";
             statusDiv.classList.remove('hidden');
 
             try {
-                const resultado = await Tesseract.recognize(arquivo, 'por');
-                const textoExtraido = resultado.data.text;
-                console.log("Texto OCR bruto:", textoExtraido);
+                const base64Image = await prepararImagemBase64(arquivo);
 
-                const linhas = textoExtraido.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                let enderecoExtraido = "";
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-                // Procura especificamente pelo termo "ENDERECO" ou "ENDEREÇO"
-                for (let i = 0; i < linhas.length; i++) {
-                    const lUp = linhas[i].toUpperCase();
-                    if (lUp.includes("ENDERECO") || lUp.includes("ENDEREÇO") || lUp.includes("END.")) {
-                        // Captura as próximas linhas úteis ignorando traços isolados ou palavras curtas vazias
-                        let pedacos = [];
-                        for (let j = 1; j <= 3; j++) {
-                            if (i + j < linhas.length) {
-                                let proximaLinha = linhas[i + j];
-                                // Se a linha seguinte for o começo de outra seção (ex: "Qtde", "Telefone", etc), para.
-                                if (proximaLinha.toUpperCase().includes("QTDE") || 
-                                    proximaLinha.toUpperCase().includes("TELEFONE") || 
-                                    proximaLinha.toUpperCase().includes("CLIENTE") ||
-                                    proximaLinha === "-") {
-                                    break;
-                                }
-                                if (proximaLinha.length > 2) {
-                                    pedacos.push(proximaLinha);
+                const payload = {
+                    contents: [{
+                        parts: [
+                            {
+                                text: "Analise esta foto de comanda de entrega. Extraia APENAS o endereço completo de entrega do cliente (Rua/Avenida, Número, Complemento se houver, e Bairro). Ignore nome do cliente, itens do pedido, valores, telefone e restaurante. Responda SOMENTE com o endereço formatado em uma única linha, sem explicações ou aspas. Exemplo: Rua Juventus, 832, Apto 91, Parque da Mooca"
+                            },
+                            {
+                                inline_data: {
+                                    mime_type: "image/jpeg",
+                                    data: base64Image
                                 }
                             }
-                        }
-                        if (pedacos.length > 0) {
-                            enderecoExtraido = pedacos.join(", ");
-                            break;
-                        }
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1
                     }
+                };
+
+                const resposta = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const dados = await resposta.json();
+
+                if (!resposta.ok) {
+                    throw new Error(dados.error?.message || "Erro na resposta da Gemini API");
                 }
 
-                // Se não achou pela palavra ENDERECO, busca linhas que contenham termos típicos de rua
-                if (!enderecoExtraido) {
-                    for (let linha of linhas) {
-                        let lUp = linha.toUpperCase();
-                        if (lUp.includes("RUA ") || lUp.includes("AV ") || lUp.includes("AVENIDA ") || lUp.includes("ALAMEDA ")) {
-                            enderecoExtraido = linha;
-                            break;
-                        }
-                    }
-                }
-
-                // Limpa possíveis caracteres indesejados nas pontas
-                enderecoExtraido = enderecoExtraido.replace(/^[-–—,\s]+/, "").trim();
-
-                document.getElementById('enderecoInput').value = enderecoExtraido;
-                statusDiv.classList.add('hidden');
+                const enderecoExtraido = dados.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
                 if (enderecoExtraido) {
-                    alert(`✨ Endereço isolado: "${enderecoExtraido}". Confira se está correto e clique em Adicionar.`);
+                    document.getElementById('enderecoInput').value = enderecoExtraido;
+                    await adicionarParada();
                 } else {
-                    alert("Não foi possível isolar o endereço com precisão. Por favor, digite ou use o microfone.");
+                    alert("A IA não conseguiu identificar um endereço claro na foto. Tente tirar outra foto com mais foco.");
                 }
             } catch (erro) {
-                console.error("Erro no OCR:", erro);
-                alert("Erro ao ler a foto da comanda.");
-                statusDiv.classList.add('hidden');
+                console.error("Erro Gemini Vision:", erro);
+                alert("Erro ao analisar foto com Gemini: " + erro.message);
             } finally {
+                statusDiv.classList.add('hidden');
                 event.target.value = '';
             }
         };
@@ -402,7 +428,7 @@
                                 lon: position.coords.longitude
                             });
                         },
-                        (error) => {
+                        () => {
                             reject("Erro no GPS.");
                         },
                         { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
