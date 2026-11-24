@@ -144,7 +144,7 @@
         .info-gps { background: #e8f0fe; color: #174ea6; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 10px; text-align: center; }
         .status-otimizacao { font-size: 0.85rem; color: #28a745; text-align: center; margin-bottom: 8px; font-weight: bold; }
         
-        /* Caixa de sugestões posicionada abaixo do campo e acima do botão */
+        /* Caixa de sugestões posicionada abaixo do input e acima do botão */
         .autocomplete-items { 
             border: 1px solid #d4d4d4; 
             border-radius: 8px; 
@@ -222,9 +222,7 @@
     </div>
 
     <script>
-        // Cole aqui a sua chave nova gerada no Google AI Studio (sem colar no chat)
-        const GEMINI_API_KEY = "AQ.Ab8RN6LZVmWF_3V6xJInDsYKWPFic4bkk5puUFEb9X_VqLD1tQ";
-        const GEMINI_MODEL = "gemini-flash-latest";
+        const PROXY_COMANDA_URL = "https://rota-comanda-proxy.rafaellabiapari.workers.dev";
 
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
         let timerAutocomplete = null;
@@ -346,61 +344,38 @@
             });
         }
 
-        // --- 4. LEITURA DE COMANDA COM GEMINI API ---
+        // --- 4. LEITURA DE COMANDA VIA CLOUDFLARE WORKER (SEM CHAVE NO FRONT-END) ---
         window.processarFotoComandaGemini = async function(event) {
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
-            if (!GEMINI_API_KEY || GEMINI_API_KEY === "COLE_SUA_CHAVE_GEMINI_AQUI") {
-                alert("⚠️ Configure sua chave da Gemini API na variável GEMINI_API_KEY do código!");
-                event.target.value = '';
-                return;
-            }
-
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "✨ IA Gemini lendo o endereço da comanda...";
+            statusDiv.innerText = "✨ Enviando comanda para leitura segura...";
             statusDiv.classList.remove('hidden');
 
             try {
                 const base64Image = await prepararImagemBase64(arquivo);
+                const licencaAtiva = localStorage.getItem('rota_licenca_ativa') || "";
 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-                const payload = {
-                    contents: [{
-                        parts: [
-                            {
-                                text: "Analise esta foto de comanda de entrega. Extraia ESTRITAMENTE o endereço de entrega localizado logo abaixo de 'ENDEREÇO' (Rua/Avenida, Número, Complemento se houver e Bairro). Ignore nome do cliente, itens do pedido, valores, telefone e observações fora do endereço. Responda SOMENTE com o endereço em uma única linha, sem explicações ou aspas."
-                            },
-                            {
-                                inline_data: {
-                                    mime_type: "image/jpeg",
-                                    data: base64Image
-                                }
-                            }
-                        ]
-                    }],
-                    generationConfig: {
-                        temperature: 0.1
-                    }
-                };
-
-                const resposta = await fetch(url, {
+                const resposta = await fetch(PROXY_COMANDA_URL, {
                     method: "POST",
                     headers: {
-                        "Content-Type": "application/json",
-                        "X-goog-api-key": GEMINI_API_KEY
+                        "Content-Type": "application/json"
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        imageBase64: base64Image,
+                        mimeType: "image/jpeg",
+                        licenca: licencaAtiva
+                    })
                 });
 
                 const dados = await resposta.json();
 
                 if (!resposta.ok) {
-                    throw new Error(dados.error?.message || "Erro na resposta da Gemini API");
+                    throw new Error(dados.error || "Erro ao processar comanda no servidor");
                 }
 
-                const enderecoExtraido = dados.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+                const enderecoExtraido = (dados.endereco || "").trim();
 
                 if (enderecoExtraido) {
                     document.getElementById('enderecoInput').value = enderecoExtraido;
@@ -409,8 +384,8 @@
                     alert("A IA não conseguiu identificar um endereço claro na imagem. Tente outra foto ou print.");
                 }
             } catch (erro) {
-                console.error("Erro Gemini Vision:", erro);
-                alert("Erro ao analisar imagem com Gemini: " + erro.message);
+                console.error("Erro leitura comanda:", erro);
+                alert("Erro ao analisar imagem: " + erro.message);
             } finally {
                 statusDiv.classList.add('hidden');
                 event.target.value = '';
