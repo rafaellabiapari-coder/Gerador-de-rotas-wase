@@ -225,16 +225,11 @@
         const PROXY_COMANDA_URL = "https://rota-comanda-proxy.rafaellabiapari.workers.dev";
 
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
-        let cacheCoords = JSON.parse(localStorage.getItem('cache_coords_entrega')) || {};
         let timerAutocomplete = null;
 
         function salvarEAtualizar() {
             localStorage.setItem('enderecos_entrega', JSON.stringify(enderecos));
             renderizarLista();
-        }
-
-        function salvarCacheCoords() {
-            localStorage.setItem('cache_coords_entrega', JSON.stringify(cacheCoords));
         }
 
         // --- 1. RECONHECIMENTO DE VOZ ---
@@ -289,12 +284,6 @@
 
                     listaDiv.innerHTML = '';
                     dados.forEach(item => {
-                        if (item.lat && item.lon) {
-                            cacheCoords[item.display_name.toLowerCase()] = {
-                                lat: parseFloat(item.lat),
-                                lon: parseFloat(item.lon)
-                            };
-                        }
                         const divItem = document.createElement('div');
                         divItem.innerHTML = item.display_name;
                         
@@ -302,7 +291,6 @@
                             e.preventDefault();
                             document.getElementById('enderecoInput').value = item.display_name;
                             listaDiv.innerHTML = '';
-                            salvarCacheCoords();
                         });
                         listaDiv.appendChild(divItem);
                     });
@@ -318,7 +306,7 @@
             }, 200);
         };
 
-        // --- 3. REDIMENSIONA E COMPRIME IMAGEM PARA UPLOAD RÁPIDO ---
+        // --- 3. REDIMENSIONA E CONVERTE IMAGEM PARA BASE64 ---
         function prepararImagemBase64(arquivo) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -326,7 +314,7 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const maxDim = 768;
+                        const maxDim = 1024;
                         let width = img.width;
                         let height = img.height;
 
@@ -345,7 +333,7 @@
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
 
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.70);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                         resolve(dataUrl.split(',')[1]);
                     };
                     img.onerror = reject;
@@ -362,7 +350,7 @@
             if (!arquivo) return;
 
             const statusDiv = document.getElementById('statusOtimizacao');
-            statusDiv.innerText = "⚡ Lendo comanda...";
+            statusDiv.innerText = "✨ Enviando comanda para leitura segura...";
             statusDiv.classList.remove('hidden');
 
             try {
@@ -405,20 +393,12 @@
         };
 
         async function gearEndereco(endereco) {
-            const chave = endereco.trim().toLowerCase();
-            if (cacheCoords[chave]) {
-                return cacheCoords[chave];
-            }
-
             try {
                 const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco)}&limit=1`;
                 const resposta = await fetch(url);
                 const dados = await resposta.json();
                 if (dados && dados.length > 0) {
-                    const coord = { lat: parseFloat(dados[0].lat), lon: parseFloat(dados[0].lon) };
-                    cacheCoords[chave] = coord;
-                    salvarCacheCoords();
-                    return coord;
+                    return { lat: parseFloat(dados[0].lat), lon: parseFloat(dados[0].lon) };
                 }
             } catch (e) {
                 console.error("Erro ao buscar coordenadas:", e);
@@ -441,7 +421,7 @@
                         () => {
                             reject("Erro no GPS.");
                         },
-                        { enableHighAccuracy: true, timeout: 4000, maximumAge: 30000 }
+                        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
                     );
                 }
             });
@@ -478,21 +458,22 @@
                 statusDiv.classList.remove('hidden');
 
                 try {
-                    const [pontoAtualRes, pontos] = await Promise.all([
-                        obterLocalizacaoAtual().catch(() => null),
-                        Promise.all(enderecos.map(async (end) => {
-                            const coords = await gearEndereco(end);
-                            return {
-                                endereco: end,
-                                lat: coords ? coords.lat : null,
-                                lon: coords ? coords.lon : null
-                            };
-                        }))
-                    ]);
+                    let pontoAtual;
+                    try {
+                        pontoAtual = await obterLocalizacaoAtual();
+                    } catch (e) {
+                        const coordsPrimeira = await gearEndereco(enderecos[0]);
+                        pontoAtual = coordsPrimeira ? { lat: coordsPrimeira.lat, lon: coordsPrimeira.lon } : null;
+                    }
 
-                    let pontoAtual = pontoAtualRes;
-                    if (!pontoAtual && pontos[0] && pontos[0].lat !== null) {
-                        pontoAtual = { lat: pontos[0].lat, lon: pontos[0].lon };
+                    let pontos = [];
+                    for (let i = 0; i < enderecos.length; i++) {
+                        const coords = await gearEndereco(enderecos[i]);
+                        pontos.push({
+                            endereco: enderecos[i],
+                            lat: coords ? coords.lat : null,
+                            lon: coords ? coords.lon : null
+                        });
                     }
 
                     let validos = pontos.filter(p => p.lat !== null);
