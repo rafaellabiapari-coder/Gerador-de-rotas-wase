@@ -230,7 +230,7 @@
         // =========================================================================
         // >>> COLOQUE A SUA CHAVE DA GEMINI API DENTRO DAS ASPAS ABAIXO <<<
         // =========================================================================
-        const GEMINI_API_KEY = "COLE_SUA_CHAVE_GEMINI_AQUI";
+        const GEMINI_API_KEY = "AQ.Ab8RN6JSgA61M7BghZZxlaLSCMY3nNe1hyRYetMLfHNfjpk4EQ";
         const GEMINI_MODEL = "gemini-3.6-flash"; // Pode usar "gemini-2.5-flash" se preferir
 
         let enderecos = JSON.parse(localStorage.getItem('enderecos_entrega')) || [];
@@ -358,7 +358,7 @@
             const arquivo = event.target.files[0];
             if (!arquivo) return;
 
-            if (!GEMINI_API_KEY || GEMINI_API_KEY === "COLE_SUA_CHAVE_GEMINI_AQUI") {
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === "AQ.Ab8RN6JSgA61M7BghZZxlaLSCMY3nNe1hyRYetMLfHNfjpk4EQ") {
                 alert("⚠️ Configure sua chave da Gemini API na variável GEMINI_API_KEY do código!");
                 event.target.value = '';
                 return;
